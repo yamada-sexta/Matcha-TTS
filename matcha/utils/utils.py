@@ -136,9 +136,86 @@ def intersperse(lst, item):
 
 
 def save_figure_to_numpy(fig):
-    data = np.fromstring(fig.canvas.tostring_rgb(), dtype=np.uint8, sep="")
-    data = data.reshape(fig.canvas.get_width_height()[::-1] + (3,))
-    return data
+    """Return an HxWx3 uint8 numpy array from a Matplotlib Figure.
+
+    This function tries several methods to extract RGB image bytes from the
+    figure canvas to be robust across Matplotlib/backends/versions where
+    certain convenience methods might be missing.
+
+    Order tried:
+      1. canvas.tostring_rgb() -> direct RGB bytes
+      2. canvas.tostring_argb() -> convert ARGB to RGB
+      3. canvas.buffer_rgba() -> buffer-like object (converted with numpy)
+      4. PIL fallback using renderer.buffer_rgba()
+
+    Raises RuntimeError if none of the strategies work.
+    """
+    # Ensure drawing has happened so the buffer is available
+    try:
+        fig.canvas.draw()
+    except Exception:
+        # If draw fails, let subsequent methods attempt to access the buffer
+        pass
+
+    canvas = fig.canvas
+    width, height = canvas.get_width_height()
+
+    # 1) Preferred: direct RGB bytes
+    if hasattr(canvas, "tostring_rgb"):
+        data = np.frombuffer(canvas.tostring_rgb(), dtype=np.uint8)
+        try:
+            return data.reshape((height, width, 3))
+        except Exception:
+            # fall through to other methods
+            pass
+
+    # 2) If only ARGB available, convert to RGB
+    if hasattr(canvas, "tostring_argb"):
+        argb = np.frombuffer(canvas.tostring_argb(), dtype=np.uint8)
+        try:
+            argb = argb.reshape((height, width, 4))
+            # ARGB -> RGB (drop alpha, reorder)
+            rgb = argb[:, :, [1, 2, 3]]
+            return rgb
+        except Exception:
+            pass
+
+    # 3) buffer_rgba (returns a buffer-like or array-like RGBA)
+    if hasattr(canvas, "buffer_rgba"):
+        try:
+            buf = canvas.buffer_rgba()
+            arr = np.asarray(buf)
+            # Expect shape (H, W, 4) or (H*W*4,)
+            if arr.ndim == 3 and arr.shape[2] >= 3:
+                return arr[:, :, :3].copy()
+            if arr.size == width * height * 4:
+                arr = arr.reshape((height, width, 4))
+                return arr[:, :, :3]
+        except Exception:
+            pass
+
+    # 4) PIL fallback using renderer.buffer_rgba()
+    try:
+        from PIL import Image
+
+        renderer = fig.canvas.get_renderer()
+        if hasattr(renderer, "buffer_rgba"):
+            raw = renderer.buffer_rgba()
+            arr = np.asarray(raw)
+            if arr.ndim == 3 and arr.shape[2] >= 3:
+                return arr[:, :, :3].copy()
+            if arr.size == width * height * 4:
+                arr = arr.reshape((height, width, 4))
+                return arr[:, :, :3]
+        # Last ditch: create PIL image from tostring_argb if available
+        if hasattr(canvas, "tostring_argb"):
+            argb = np.frombuffer(canvas.tostring_argb(), dtype=np.uint8).reshape((height, width, 4))
+            rgb = argb[:, :, [1, 2, 3]]
+            return rgb
+    except Exception:
+        pass
+
+    raise RuntimeError("Unable to extract RGB image from Matplotlib figure canvas")
 
 
 def plot_tensor(tensor):
