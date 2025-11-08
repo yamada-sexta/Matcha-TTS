@@ -1,6 +1,7 @@
 import datetime as dt
 import math
 import random
+from typing import Any, Dict, Optional, Tuple, Union
 
 import torch
 
@@ -23,20 +24,20 @@ log = utils.get_pylogger(__name__)
 class MatchaTTS(BaseLightningClass):  # 🍵
     def __init__(
         self,
-        n_vocab,
-        n_spks,
-        spk_emb_dim,
-        n_feats,
-        encoder,
-        decoder,
-        cfm,
-        data_statistics,
-        out_size,
-        optimizer=None,
-        scheduler=None,
-        prior_loss=True,
-        use_precomputed_durations=False,
-    ):
+        n_vocab: int,
+        n_spks: int,
+        spk_emb_dim: int,
+        n_feats: int,
+        encoder: Any,
+        decoder: Any,
+        cfm: Any,
+        data_statistics: Any,
+        out_size: int,
+        optimizer: Optional[Any] = None,
+        scheduler: Optional[Any] = None,
+        prior_loss: bool = True,
+        use_precomputed_durations: bool = False,
+    ) -> None:
         super().__init__()
 
         self.save_hyperparameters(logger=False)
@@ -73,7 +74,15 @@ class MatchaTTS(BaseLightningClass):  # 🍵
         self.update_data_statistics(data_statistics)
 
     @torch.inference_mode()
-    def synthesise(self, x, x_lengths, n_timesteps, temperature=1.0, spks=None, length_scale=1.0):
+    def synthesise(
+        self,
+        x: torch.Tensor,
+        x_lengths: torch.Tensor,
+        n_timesteps: int,
+        temperature: float = 1.0,
+        spks: Optional[torch.Tensor] = None,
+        length_scale: float = 1.0,
+    ) -> Dict[str, Any]:
         """
         Generates mel-spectrogram from text. Returns:
             1. encoder outputs
@@ -150,7 +159,17 @@ class MatchaTTS(BaseLightningClass):  # 🍵
             "rtf": rtf,
         }
 
-    def forward(self, x, x_lengths, y, y_lengths, spks=None, out_size=None, cond=None, durations=None):
+    def forward(
+        self,
+        x: torch.Tensor,
+        x_lengths: torch.Tensor,
+        y: torch.Tensor,
+        y_lengths: torch.Tensor,
+        spks: Optional[torch.Tensor] = None,
+        out_size: Optional[int] = None,
+        cond: Optional[Any] = None,
+        durations: Optional[torch.Tensor] = None,
+    ) -> Tuple[torch.Tensor, Union[torch.Tensor, float], torch.Tensor, torch.Tensor]:
         """
         Computes 3 losses:
             1. duration loss: loss between predicted token durations and those extracted by Monotonic Alignment Search (MAS).
