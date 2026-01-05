@@ -35,6 +35,7 @@ dependencies = [
     "tensorboard>=2.20.0",
     "torch>=2.0.0",
     "torchaudio>=2.9.0",
+    "torchcodec>=0.9.1",
     "torchmetrics>=0.11.4",
     "torchvision>=0.15.0",
     "unidecode>=1.4.0",
