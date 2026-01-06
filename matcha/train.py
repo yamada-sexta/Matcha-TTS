@@ -49,7 +49,7 @@ def create_model(cfg: DictConfig) -> MatchaTTS:
     decoder_cfg = OmegaConf.to_container(model_cfg.decoder, resolve=True)
     cfm_cfg = OmegaConf.to_container(model_cfg.cfm, resolve=True)
 
-    # Convert to namespace-like objects for the model
+    # Convert encoder to namespace-like object (it uses attribute access)
     from types import SimpleNamespace
 
     def dict_to_namespace(d):
@@ -58,7 +58,8 @@ def create_model(cfg: DictConfig) -> MatchaTTS:
         return d
 
     encoder = dict_to_namespace(encoder_cfg)
-    decoder = dict_to_namespace(decoder_cfg)
+    # decoder and cfm stay as dicts because they're unpacked with ** in the model
+    decoder = decoder_cfg
     cfm = dict_to_namespace(cfm_cfg)
 
     model = MatchaTTS(
