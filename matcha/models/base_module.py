@@ -128,7 +128,7 @@ class BaseModule(nn.Module, ABC):
     @classmethod
     def load_from_checkpoint(
         cls: Type[T],
-        checkpoint_path: str,
+        checkpoint_path: Union[str, os.PathLike],
         map_location: Optional[Union[str, torch.device]] = None,
         **kwargs: Any,
     ) -> T:

@@ -1,3 +1,4 @@
+from numpy._typing._array_like import NDArray
 import os
 import sys
 import warnings
@@ -97,7 +98,7 @@ def task_wrapper(task_func: Callable) -> Callable:
 
             # always close wandb run (even if exception occurs so multirun won't fail)
             if find_spec("wandb"):  # check if wandb is installed
-                import wandb 
+                import wandb
 
                 if wandb.run:
                     log.info("Closing wandb!")
@@ -108,7 +109,9 @@ def task_wrapper(task_func: Callable) -> Callable:
     return wrap
 
 
-def get_metric_value(metric_dict: Dict[str, Any], metric_name: str) -> Union[float, None]:
+def get_metric_value(
+    metric_dict: Dict[str, Any], metric_name: str
+) -> Union[float, None]:
     """Safely retrieves value of a metric.
 
     :param metric_dict: A dict containing metric values.
@@ -127,7 +130,7 @@ def get_metric_value(metric_dict: Dict[str, Any], metric_name: str) -> Union[flo
         )
 
     metric_value = metric_dict[metric_name]
-    if hasattr(metric_value, 'item'):
+    if hasattr(metric_value, "item"):
         metric_value = metric_value.item()
     log.info(f"Retrieved metric value! <{metric_name}={metric_value}>")
 
@@ -215,7 +218,9 @@ def save_figure_to_numpy(fig: Figure) -> npt.NDArray[np.uint8]:
                 return arr[:, :, :3]
         # Last ditch: create PIL image from tostring_argb if available
         if hasattr(canvas, "tostring_argb"):
-            argb = np.frombuffer(canvas.tostring_argb(), dtype=np.uint8).reshape((height, width, 4))
+            argb = np.frombuffer(canvas.tostring_argb(), dtype=np.uint8).reshape(
+                (height, width, 4)
+            )
             rgb = argb[:, :, [1, 2, 3]]
             return rgb
     except Exception:
@@ -236,7 +241,9 @@ def plot_tensor(tensor: Union[torch.Tensor, npt.ArrayLike]) -> npt.NDArray[np.ui
     return data
 
 
-def save_plot(tensor: Union[torch.Tensor, npt.ArrayLike], savepath: Union[str, Path]) -> None:
+def save_plot(
+    tensor: Union[torch.Tensor, npt.ArrayLike], savepath: Union[str, Path]
+) -> None:
     plt.style.use("default")  # type: ignore[attr-defined]
     fig, ax = plt.subplots(figsize=(12, 3))
     im = ax.imshow(tensor, aspect="auto", origin="lower", interpolation="none")  # type: ignore[arg-type]
@@ -248,7 +255,7 @@ def save_plot(tensor: Union[torch.Tensor, npt.ArrayLike], savepath: Union[str, P
 
 
 def to_numpy(
-    tensor: Union[npt.NDArray[Any], torch.Tensor, List[Any]]
+    tensor: Union[npt.NDArray[Any], torch.Tensor, List[Any]],
 ) -> npt.NDArray[Any]:
     if isinstance(tensor, np.ndarray):
         return tensor
@@ -308,7 +315,7 @@ def assert_model_downloaded(
 
 
 def get_phoneme_durations(
-    durations: List[int], phones: List[str]
+    durations: Union[List[int], NDArray[np.int32 | np.int64]], phones: str
 ) -> List[Dict[str, Dict[str, Any]]]:
     prev = durations[0]
     merged_durations: List[int] = []

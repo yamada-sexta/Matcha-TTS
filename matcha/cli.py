@@ -114,7 +114,7 @@ def load_vocoder(
 
 
 def load_matcha(
-    model_name: str, checkpoint_path: Union[str, Path], device: torch.device
+    model_name: str, checkpoint_path: Union[str, Path], device: torch.device | str
 ) -> MatchaTTS:
     print(f"[!] Loading {model_name} from: {checkpoint_path}")
     model = MatchaTTS.load_from_checkpoint(checkpoint_path, map_location=device)

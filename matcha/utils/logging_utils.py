@@ -3,7 +3,7 @@ Legacy logging utilities.
 These functions were used with PyTorch Lightning and are kept for backwards compatibility.
 The plain PyTorch training script handles logging differently.
 """
-from typing import Any, Dict
+from typing import Any, Dict, cast
 
 from omegaconf import OmegaConf
 
@@ -24,7 +24,7 @@ def log_hyperparameters(object_dict: Dict[str, Any]) -> None:
     """
     hparams = {}
 
-    cfg = OmegaConf.to_container(object_dict["cfg"])
+    cfg = cast(Dict[str, Any], OmegaConf.to_container(object_dict["cfg"]))
     model = object_dict["model"]
 
     hparams["model"] = cfg["model"]
