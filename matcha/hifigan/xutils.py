@@ -5,7 +5,7 @@ import os
 
 import matplotlib
 import torch
-from torch.nn.utils import weight_norm
+from torch.nn.utils.parametrizations import weight_norm
 
 matplotlib.use("Agg")
 import matplotlib.pylab as plt
@@ -31,7 +31,7 @@ def init_weights(m, mean=0.0, std=0.01):
 def apply_weight_norm(m):
     classname = m.__class__.__name__
     if classname.find("Conv") != -1:
-        weight_norm(m)
+        weight_norm(m, name="weight")
 
 
 def get_padding(kernel_size, dilation=1):

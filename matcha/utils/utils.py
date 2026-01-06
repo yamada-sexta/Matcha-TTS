@@ -4,14 +4,18 @@ import warnings
 from importlib.util import find_spec
 from math import ceil
 from pathlib import Path
-from typing import Any, Callable, Dict, Tuple
+from typing import Any, Callable, Dict, List, Tuple, TypeVar, Union
 
 import gdown
 import matplotlib.pyplot as plt
 import numpy as np
+import numpy.typing as npt
 import torch
 import wget
+from matplotlib.figure import Figure
 from omegaconf import DictConfig
+
+T = TypeVar("T")
 
 from matcha.utils import pylogger, rich_utils
 
@@ -93,7 +97,7 @@ def task_wrapper(task_func: Callable) -> Callable:
 
             # always close wandb run (even if exception occurs so multirun won't fail)
             if find_spec("wandb"):  # check if wandb is installed
-                import wandb
+                import wandb 
 
                 if wandb.run:
                     log.info("Closing wandb!")
@@ -104,7 +108,7 @@ def task_wrapper(task_func: Callable) -> Callable:
     return wrap
 
 
-def get_metric_value(metric_dict: Dict[str, Any], metric_name: str) -> float:
+def get_metric_value(metric_dict: Dict[str, Any], metric_name: str) -> Union[float, None]:
     """Safely retrieves value of a metric.
 
     :param metric_dict: A dict containing metric values.
@@ -130,14 +134,14 @@ def get_metric_value(metric_dict: Dict[str, Any], metric_name: str) -> float:
     return metric_value
 
 
-def intersperse(lst, item):
+def intersperse(lst: List[T], item: T) -> List[T]:
     # Adds blank symbol
     result = [item] * (len(lst) * 2 + 1)
     result[1::2] = lst
     return result
 
 
-def save_figure_to_numpy(fig):
+def save_figure_to_numpy(fig: Figure) -> npt.NDArray[np.uint8]:
     """Return an HxWx3 uint8 numpy array from a Matplotlib Figure.
 
     This function tries several methods to extract RGB image bytes from the
@@ -200,7 +204,7 @@ def save_figure_to_numpy(fig):
     try:
         from PIL import Image
 
-        renderer = fig.canvas.get_renderer()
+        renderer = fig.canvas.get_renderer()  # type: ignore[attr-defined]
         if hasattr(renderer, "buffer_rgba"):
             raw = renderer.buffer_rgba()
             arr = np.asarray(raw)
@@ -220,10 +224,10 @@ def save_figure_to_numpy(fig):
     raise RuntimeError("Unable to extract RGB image from Matplotlib figure canvas")
 
 
-def plot_tensor(tensor):
-    plt.style.use("default")
+def plot_tensor(tensor: Union[torch.Tensor, npt.ArrayLike]) -> npt.NDArray[np.uint8]:
+    plt.style.use("default")  # type: ignore[attr-defined]
     fig, ax = plt.subplots(figsize=(12, 3))
-    im = ax.imshow(tensor, aspect="auto", origin="lower", interpolation="none")
+    im = ax.imshow(tensor, aspect="auto", origin="lower", interpolation="none")  # type: ignore[arg-type]
     plt.colorbar(im, ax=ax)
     plt.tight_layout()
     fig.canvas.draw()
@@ -232,10 +236,10 @@ def plot_tensor(tensor):
     return data
 
 
-def save_plot(tensor, savepath):
-    plt.style.use("default")
+def save_plot(tensor: Union[torch.Tensor, npt.ArrayLike], savepath: Union[str, Path]) -> None:
+    plt.style.use("default")  # type: ignore[attr-defined]
     fig, ax = plt.subplots(figsize=(12, 3))
-    im = ax.imshow(tensor, aspect="auto", origin="lower", interpolation="none")
+    im = ax.imshow(tensor, aspect="auto", origin="lower", interpolation="none")  # type: ignore[arg-type]
     plt.colorbar(im, ax=ax)
     plt.tight_layout()
     fig.canvas.draw()
@@ -243,7 +247,9 @@ def save_plot(tensor, savepath):
     plt.close()
 
 
-def to_numpy(tensor):
+def to_numpy(
+    tensor: Union[npt.NDArray[Any], torch.Tensor, List[Any]]
+) -> npt.NDArray[Any]:
     if isinstance(tensor, np.ndarray):
         return tensor
     elif isinstance(tensor, torch.Tensor):
@@ -254,7 +260,7 @@ def to_numpy(tensor):
         raise TypeError("Unsupported type for conversion to numpy array")
 
 
-def get_user_data_dir(appname="matcha_tts"):
+def get_user_data_dir(appname: str = "matcha_tts") -> Path:
     """
     Args:
         appname (str): Name of application
@@ -285,7 +291,9 @@ def get_user_data_dir(appname="matcha_tts"):
     return final_path
 
 
-def assert_model_downloaded(checkpoint_path, url, use_wget=True):
+def assert_model_downloaded(
+    checkpoint_path: Union[str, Path], url: str, use_wget: bool = True
+) -> None:
     if Path(checkpoint_path).exists():
         log.debug(f"[+] Model already present at {checkpoint_path}!")
         print(f"[+] Model already present at {checkpoint_path}!")
@@ -299,9 +307,11 @@ def assert_model_downloaded(checkpoint_path, url, use_wget=True):
         wget.download(url=url, out=checkpoint_path)
 
 
-def get_phoneme_durations(durations, phones):
+def get_phoneme_durations(
+    durations: List[int], phones: List[str]
+) -> List[Dict[str, Dict[str, Any]]]:
     prev = durations[0]
-    merged_durations = []
+    merged_durations: List[int] = []
     # Convolve with stride 2
     for i in range(1, len(durations), 2):
         if i == len(durations) - 2:
@@ -317,20 +327,20 @@ def get_phoneme_durations(durations, phones):
     assert len(phones) == len(merged_durations)
     assert len(merged_durations) == (len(durations) - 1) // 2
 
-    merged_durations = torch.cumsum(torch.tensor(merged_durations), 0, dtype=torch.long)
+    cumsum_durations = torch.cumsum(torch.tensor(merged_durations), 0, dtype=torch.long)
     start = torch.tensor(0)
-    duration_json = []
-    for i, duration in enumerate(merged_durations):
+    duration_json: List[Dict[str, Dict[str, Any]]] = []
+    for i, dur in enumerate(cumsum_durations):
         duration_json.append(
             {
                 phones[i]: {
                     "starttime": start.item(),
-                    "endtime": duration.item(),
-                    "duration": duration.item() - start.item(),
+                    "endtime": dur.item(),
+                    "duration": dur.item() - start.item(),
                 }
             }
         )
-        start = duration
+        start = dur
 
     assert list(duration_json[-1].values())[0]["endtime"] == sum(
         durations

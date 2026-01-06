@@ -101,35 +101,37 @@ def create_scheduler(optimizer: torch.optim.Optimizer, cfg: DictConfig):
         scheduler_class_name = scheduler_cfg.scheduler._target_.split(".")[-1]
         scheduler_class = getattr(torch.optim.lr_scheduler, scheduler_class_name, None)
         if scheduler_class:
-            scheduler_params = {k: v for k, v in OmegaConf.to_container(scheduler_cfg.scheduler, resolve=True).items()
-                              if k != "_target_" and k != "_partial_"}
-            return scheduler_class(optimizer, **scheduler_params)
+            scheduler_container = OmegaConf.to_container(scheduler_cfg.scheduler, resolve=True)
+            if isinstance(scheduler_container, dict):
+                scheduler_params = {k: v for k, v in scheduler_container.items()
+                                  if k != "_target_" and k != "_partial_"}
+                return scheduler_class(optimizer, **scheduler_params)
     return None
 
 
-def train_step(model: nn.Module, batch: Dict[str, Any], device: torch.device) -> Dict[str, torch.Tensor]:
+def train_step(model: MatchaTTS, batch: Dict[str, Any], device: torch.device) -> Dict[str, Any]:
     """Perform a single training step."""
     # Move batch to device
     batch = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in batch.items()}
 
     # Get losses
     loss_dict = model.get_losses(batch)
-    total_loss = sum(loss_dict.values())
+    total_loss: torch.Tensor = sum(loss_dict.values())  # type: ignore[assignment]
 
     return {"loss": total_loss, **loss_dict}
 
 
 @torch.no_grad()
-def validate(model: nn.Module, val_loader, device: torch.device) -> Dict[str, float]:
+def validate(model: MatchaTTS, val_loader, device: torch.device) -> Dict[str, float]:
     """Run validation and return average losses."""
     model.eval()
-    total_losses = {"dur_loss": 0.0, "prior_loss": 0.0, "diff_loss": 0.0, "loss": 0.0}
+    total_losses: Dict[str, float] = {"dur_loss": 0.0, "prior_loss": 0.0, "diff_loss": 0.0, "loss": 0.0}
     num_batches = 0
 
     for batch in val_loader:
         batch = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in batch.items()}
         loss_dict = model.get_losses(batch)
-        total_loss = sum(loss_dict.values())
+        total_loss: torch.Tensor = sum(loss_dict.values())  # type: ignore[assignment]
 
         total_losses["loss"] += total_loss.item()
         for k, v in loss_dict.items():
@@ -146,12 +148,12 @@ def validate(model: nn.Module, val_loader, device: torch.device) -> Dict[str, fl
 
 
 def log_validation_images(
-    model: nn.Module,
+    model: MatchaTTS,
     val_loader,
     device: torch.device,
     writer: SummaryWriter,
     epoch: int,
-):
+) -> None:
     """Log validation images to tensorboard."""
     model.eval()
     try:
@@ -263,6 +265,8 @@ def train(cfg: DictConfig) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     train_loader = datamodule.train_dataloader()
     val_loader = datamodule.val_dataloader()
 
+    assert datamodule.trainset is not None, "Train dataset not initialized"
+    assert datamodule.validset is not None, "Validation dataset not initialized"
     log.info(f"Train dataset size: {len(datamodule.trainset)}")
     log.info(f"Val dataset size: {len(datamodule.validset)}")
 
@@ -319,8 +323,12 @@ def train(cfg: DictConfig) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     best_val_loss = float("inf")
     model.train()
 
+    # Initialize to avoid uninitialized variable errors
+    avg_epoch_loss: float = 0.0
+    val_losses: Dict[str, float] = {"dur_loss": 0.0, "prior_loss": 0.0, "diff_loss": 0.0, "loss": 0.0}
+
     for epoch in range(start_epoch, max_epochs):
-        epoch_losses = {"dur_loss": 0.0, "prior_loss": 0.0, "diff_loss": 0.0, "loss": 0.0}
+        epoch_losses: Dict[str, float] = {"dur_loss": 0.0, "prior_loss": 0.0, "diff_loss": 0.0, "loss": 0.0}
         num_batches = 0
 
         pbar = tqdm(train_loader, desc=f"Epoch {epoch + 1}/{max_epochs}")
@@ -343,10 +351,11 @@ def train(cfg: DictConfig) -> Tuple[Dict[str, Any], Dict[str, Any]]:
             # Update epoch losses
             epoch_losses["loss"] += loss.item()
             for k in ["dur_loss", "prior_loss", "diff_loss"]:
-                if isinstance(loss_dict[k], torch.Tensor):
-                    epoch_losses[k] += loss_dict[k].item()
-                else:
-                    epoch_losses[k] += loss_dict[k]
+                loss_val = loss_dict[k]
+                if isinstance(loss_val, torch.Tensor):
+                    epoch_losses[k] += loss_val.item()
+                elif isinstance(loss_val, (int, float)):
+                    epoch_losses[k] += loss_val
             num_batches += 1
             global_step += 1
 

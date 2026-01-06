@@ -1,3 +1,4 @@
+from typing import Any, Union
 import argparse
 import datetime as dt
 import os
@@ -6,6 +7,7 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
+import numpy.typing as npt
 import soundfile as sf
 import torch
 
@@ -17,26 +19,28 @@ from matcha.models.matcha_tts import MatchaTTS
 from matcha.text import sequence_to_text, text_to_sequence
 from matcha.utils.utils import assert_model_downloaded, get_user_data_dir, intersperse
 
-MATCHA_URLS = {
+MATCHA_URLS: dict[str, str] = {
     "matcha_ljspeech": "https://github.com/shivammehta25/Matcha-TTS-checkpoints/releases/download/v1.0/matcha_ljspeech.ckpt",
     "matcha_vctk": "https://github.com/shivammehta25/Matcha-TTS-checkpoints/releases/download/v1.0/matcha_vctk.ckpt",
 }
 
-VOCODER_URLS = {
+VOCODER_URLS: dict[str, str] = {
     "hifigan_T2_v1": "https://github.com/shivammehta25/Matcha-TTS-checkpoints/releases/download/v1.0/generator_v1",  # Old url: https://drive.google.com/file/d/14NENd4equCBLyyCSke114Mv6YR_j_uFs/view?usp=drive_link
     "hifigan_univ_v1": "https://github.com/shivammehta25/Matcha-TTS-checkpoints/releases/download/v1.0/g_02500000",  # Old url: https://drive.google.com/file/d/1qpgI41wNXFcH-iKq1Y42JlBC9j0je8PW/view?usp=drive_link
 }
 
-MULTISPEAKER_MODEL = {
+MULTISPEAKER_MODEL: dict[str, dict[str, Any]] = {
     "matcha_vctk": {"vocoder": "hifigan_univ_v1", "speaking_rate": 0.85, "spk": 0, "spk_range": (0, 107)}
 }
 
-SINGLESPEAKER_MODEL = {"matcha_ljspeech": {"vocoder": "hifigan_T2_v1", "speaking_rate": 0.95, "spk": None}}
+SINGLESPEAKER_MODEL: dict[str, dict[str, Any]] = {"matcha_ljspeech": {"vocoder": "hifigan_T2_v1", "speaking_rate": 0.95, "spk": None}}
 
 
-def plot_spectrogram_to_numpy(spectrogram, filename):
+def plot_spectrogram_to_numpy(
+    spectrogram: npt.ArrayLike, filename: str
+) -> None:
     fig, ax = plt.subplots(figsize=(12, 3))
-    im = ax.imshow(spectrogram, aspect="auto", origin="lower", interpolation="none")
+    im = ax.imshow(spectrogram, aspect="auto", origin="lower", interpolation="none")  # type: ignore[arg-type]
     plt.colorbar(im, ax=ax)
     plt.xlabel("Frames")
     plt.ylabel("Channels")
@@ -45,7 +49,7 @@ def plot_spectrogram_to_numpy(spectrogram, filename):
     plt.savefig(filename)
 
 
-def process_text(i: int, text: str, device: torch.device):
+def process_text(i: int, text: str, device: torch.device) -> dict[str, Any]:
     print(f"[{i}] - Input text: {text}")
     x = torch.tensor(
         intersperse(text_to_sequence(text, ["english_cleaners2"])[0], 0),
@@ -59,7 +63,7 @@ def process_text(i: int, text: str, device: torch.device):
     return {"x_orig": text, "x": x, "x_lengths": x_lengths, "x_phones": x_phones}
 
 
-def get_texts(args):
+def get_texts(args: argparse.Namespace) -> list[str]:
     if args.text:
         texts = [args.text]
     else:
@@ -68,7 +72,7 @@ def get_texts(args):
     return texts
 
 
-def assert_required_models_available(args):
+def assert_required_models_available(args: argparse.Namespace) -> dict[str, Union[str, Path]]:
     save_dir = get_user_data_dir()
     if hasattr(args, "checkpoint_path") and args.checkpoint_path is not None:
         # Using custom checkpoint path
@@ -83,7 +87,7 @@ def assert_required_models_available(args):
     return {"matcha": model_path, "vocoder": vocoder_path}
 
 
-def load_hifigan(checkpoint_path, device):
+def load_hifigan(checkpoint_path: Union[str, Path], device: torch.device) -> HiFiGAN:
     h = AttrDict(v1)
     hifigan = HiFiGAN(h).to(device)
     hifigan.load_state_dict(torch.load(checkpoint_path, map_location=device)["generator"])
@@ -92,7 +96,9 @@ def load_hifigan(checkpoint_path, device):
     return hifigan
 
 
-def load_vocoder(vocoder_name, checkpoint_path, device):
+def load_vocoder(
+    vocoder_name: str, checkpoint_path: Union[str, Path], device: torch.device
+) -> tuple[HiFiGAN, Denoiser]:
     print(f"[!] Loading {vocoder_name}!")
     vocoder = None
     if vocoder_name in ("hifigan_T2_v1", "hifigan_univ_v1"):
@@ -107,7 +113,9 @@ def load_vocoder(vocoder_name, checkpoint_path, device):
     return vocoder, denoiser
 
 
-def load_matcha(model_name, checkpoint_path, device):
+def load_matcha(
+    model_name: str, checkpoint_path: Union[str, Path], device: torch.device
+) -> MatchaTTS:
     print(f"[!] Loading {model_name} from: {checkpoint_path}")
     model = MatchaTTS.load_from_checkpoint(checkpoint_path, map_location=device)
     model = model.to(device)
@@ -117,7 +125,12 @@ def load_matcha(model_name, checkpoint_path, device):
     return model
 
 
-def to_waveform(mel, vocoder, denoiser=None, denoiser_strength=0.00025):
+def to_waveform(
+    mel: torch.Tensor,
+    vocoder: HiFiGAN,
+    denoiser: Union[Denoiser, None] = None,
+    denoiser_strength: float = 0.00025,
+) -> torch.Tensor:
     audio = vocoder(mel).clamp(-1, 1)
     if denoiser is not None:
         audio = denoiser(audio.squeeze(), strength=denoiser_strength).cpu().squeeze()
@@ -125,7 +138,7 @@ def to_waveform(mel, vocoder, denoiser=None, denoiser_strength=0.00025):
     return audio.cpu().squeeze()
 
 
-def save_to_folder(filename: str, output: dict, folder: str):
+def save_to_folder(filename: str, output: dict[str, Any], folder: Union[str, Path]) -> Path:
     folder = Path(folder)
     folder.mkdir(exist_ok=True, parents=True)
     plot_spectrogram_to_numpy(np.array(output["mel"].squeeze().float().cpu()), f"{filename}.png")
@@ -134,7 +147,7 @@ def save_to_folder(filename: str, output: dict, folder: str):
     return folder.resolve() / f"{filename}.wav"
 
 
-def validate_args(args):
+def validate_args(args: argparse.Namespace) -> argparse.Namespace:
     assert (
         args.text or args.file
     ), "Either text or file must be provided Matcha-T(ea)TTS need sometext to whisk the waveforms."
@@ -166,7 +179,7 @@ def validate_args(args):
     return args
 
 
-def validate_args_for_multispeaker_model(args):
+def validate_args_for_multispeaker_model(args: argparse.Namespace) -> argparse.Namespace:
     if args.vocoder is not None:
         if args.vocoder != MULTISPEAKER_MODEL[args.model]["vocoder"]:
             warn_ = f"[-] Using {args.model} model! I would suggest passing --vocoder {MULTISPEAKER_MODEL[args.model]['vocoder']}"
@@ -177,7 +190,7 @@ def validate_args_for_multispeaker_model(args):
     if args.speaking_rate is None:
         args.speaking_rate = MULTISPEAKER_MODEL[args.model]["speaking_rate"]
 
-    spk_range = MULTISPEAKER_MODEL[args.model]["spk_range"]
+    spk_range: tuple[int, int] = MULTISPEAKER_MODEL[args.model]["spk_range"]  # type: ignore[assignment]
     if args.spk is not None:
         assert (
             args.spk >= spk_range[0] and args.spk <= spk_range[-1]
@@ -191,7 +204,7 @@ def validate_args_for_multispeaker_model(args):
     return args
 
 
-def validate_args_for_single_speaker_model(args):
+def validate_args_for_single_speaker_model(args: argparse.Namespace) -> argparse.Namespace:
     if args.vocoder is not None:
         if args.vocoder != SINGLESPEAKER_MODEL[args.model]["vocoder"]:
             warn_ = f"[-] Using {args.model} model! I would suggest passing --vocoder {SINGLESPEAKER_MODEL[args.model]['vocoder']}"
@@ -211,7 +224,7 @@ def validate_args_for_single_speaker_model(args):
 
 
 @torch.inference_mode()
-def cli():
+def cli() -> None:
     parser = argparse.ArgumentParser(
         description=" 🍵 Matcha-TTS: A fast TTS architecture with conditional flow matching"
     )
@@ -295,18 +308,18 @@ def cli():
         batched_synthesis(args, device, model, vocoder, denoiser, texts, spk)
 
 
-class BatchedSynthesisDataset(torch.utils.data.Dataset):
-    def __init__(self, processed_texts):
+class BatchedSynthesisDataset(torch.utils.data.Dataset[dict[str, Any]]):
+    def __init__(self, processed_texts: list[dict[str, Any]]) -> None:
         self.processed_texts = processed_texts
 
-    def __len__(self):
+    def __len__(self) -> int:
         return len(self.processed_texts)
 
-    def __getitem__(self, idx):
-        return self.processed_texts[idx]
+    def __getitem__(self, index: int) -> dict[str, Any]:
+        return self.processed_texts[index]
 
 
-def batched_collate_fn(batch):
+def batched_collate_fn(batch: list[dict[str, Any]]) -> dict[str, torch.Tensor]:
     x = []
     x_lengths = []
 
@@ -319,10 +332,18 @@ def batched_collate_fn(batch):
     return {"x": x, "x_lengths": x_lengths}
 
 
-def batched_synthesis(args, device, model, vocoder, denoiser, texts, spk):
-    total_rtf = []
-    total_rtf_w = []
-    processed_text = [process_text(i, text, "cpu") for i, text in enumerate(texts)]
+def batched_synthesis(
+    args: argparse.Namespace,
+    device: torch.device,
+    model: MatchaTTS,
+    vocoder: HiFiGAN,
+    denoiser: Denoiser,
+    texts: list[str],
+    spk: Union[torch.Tensor, None],
+) -> None:
+    total_rtf: list[float] = []
+    total_rtf_w: list[float] = []
+    processed_text = [process_text(i, text, torch.device("cpu")) for i, text in enumerate(texts)]
     dataloader = torch.utils.data.DataLoader(
         BatchedSynthesisDataset(processed_text),
         batch_size=args.batch_size,
@@ -362,9 +383,17 @@ def batched_synthesis(args, device, model, vocoder, denoiser, texts, spk):
     print("[🍵] Enjoy the freshly whisked 🍵 Matcha-TTS!")
 
 
-def unbatched_synthesis(args, device, model, vocoder, denoiser, texts, spk):
-    total_rtf = []
-    total_rtf_w = []
+def unbatched_synthesis(
+    args: argparse.Namespace,
+    device: torch.device,
+    model: MatchaTTS,
+    vocoder: HiFiGAN,
+    denoiser: Denoiser,
+    texts: list[str],
+    spk: Union[torch.Tensor, None],
+) -> None:
+    total_rtf: list[float] = []
+    total_rtf_w: list[float] = []
     for i, text in enumerate(texts):
         i = i + 1
         base_name = f"utterance_{i:03d}_speaker_{args.spk:03d}" if args.spk is not None else f"utterance_{i:03d}"
@@ -401,7 +430,7 @@ def unbatched_synthesis(args, device, model, vocoder, denoiser, texts, spk):
     print("[🍵] Enjoy the freshly whisked 🍵 Matcha-TTS!")
 
 
-def print_config(args):
+def print_config(args: argparse.Namespace) -> None:
     print("[!] Configurations: ")
     print(f"\t- Model: {args.model}")
     if hasattr(args, "checkpoint_path") and args.checkpoint_path is not None:
@@ -413,7 +442,7 @@ def print_config(args):
     print(f"\t- Speaker: {args.spk}")
 
 
-def get_device(args):
+def get_device(args: argparse.Namespace) -> torch.device:
     if torch.cuda.is_available() and not args.cpu:
         print("[+] GPU Available! Using GPU")
         device = torch.device("cuda")

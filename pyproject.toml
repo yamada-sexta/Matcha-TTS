@@ -1,5 +1,11 @@
-[build-system]
-requires = ["setuptools", "wheel", "cython>=3.2.0", "numpy>=1.26.4", "packaging"]
+# [build-system]
+# requires = ["setuptools", "wheel", "cython>=3.2.0", "numpy>=1.26.4", "packaging"]
+
+[tool.pyrefly]
+project-includes = [
+    "**/*.py*",
+    "**/*.ipynb",
+]
 
 [project]
 name = "matcha-tts"
@@ -27,6 +33,7 @@ dependencies = [
     "peft>=0.18.0",
     "phonemizer>=3.3.0",
     "pre-commit>=4.3.0",
+    "pyrefly>=0.47.0",
     "pytest>=8.4.2",
     "rich>=14.2.0",
     "rootutils>=1.0.7",
@@ -40,5 +47,31 @@ dependencies = [
     "torchvision>=0.15.0",
     "tqdm>=4.66.0",
     "unidecode>=1.4.0",
+    "wandb>=0.23.1",
     "wget>=3.2",
 ]
+
+
+# project-includes = [
+#     "match"
+# ]
+
+#  check all Python files under the containing directory
+# project-includes = ["**/*.py*"]
+# # exclude some uninteresting files
+# project-excludes = ["**/node_modules", "**/__pycache__", "**/*venv/**", "**/.[!/.]*/**"]
+# # perform an upward search for `.gitignore`, `.ignore`, and `.git/info/exclude`, and
+# # add those to `project-excludes` automatically
+# use-ignore-files = true
+# # import project files from "."
+# search-path = ["."]
+# # let Pyrefly try to guess your search path
+# disable-search-path-heuristics = false
+# # do not include any third-party packages (except those provided by an interpreter)
+# site-package-path = []
+# # a table mapping error codes to an `is-enabled` boolean
+# [errors]
+# # disable `bad-assignment` errors
+# bad-assignment = false
+# # disable `bad-return` errors
+# bad-return = false
