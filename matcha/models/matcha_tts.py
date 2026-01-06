@@ -122,6 +122,7 @@ class MatchaTTS(BaseModule):  # 🍵
 
         if self.n_spks > 1:
             # Get speaker embedding
+            assert spks is not None
             spks = self.spk_emb(spks.long())
 
         # Get encoder_outputs `mu_x` and log-scaled token durations `logw`
@@ -134,7 +135,7 @@ class MatchaTTS(BaseModule):  # 🍵
         y_max_length_ = fix_len_compatibility(y_max_length)
 
         # Using obtained durations `w` construct alignment map `attn`
-        y_mask = sequence_mask(y_lengths, y_max_length_).unsqueeze(1).to(x_mask.dtype)
+        y_mask = sequence_mask(y_lengths, int(y_max_length_)).unsqueeze(1).to(x_mask.dtype)
         attn_mask = x_mask.unsqueeze(-1) * y_mask.unsqueeze(2)
         attn = generate_path(w_ceil.squeeze(1), attn_mask.squeeze(1)).unsqueeze(1)
 
@@ -202,6 +203,7 @@ class MatchaTTS(BaseModule):  # 🍵
         attn_mask = x_mask.unsqueeze(-1) * y_mask.unsqueeze(2)
 
         if self.use_precomputed_durations:
+            assert durations is not None
             attn = generate_path(durations.squeeze(1), attn_mask.squeeze(1))
         else:
             # Use MAS to find most likely alignment `attn` between text and mel-spectrogram
@@ -233,15 +235,15 @@ class MatchaTTS(BaseModule):  # 🍵
             attn_cut = torch.zeros(attn.shape[0], attn.shape[1], out_size, dtype=attn.dtype, device=attn.device)
             y_cut = torch.zeros(y.shape[0], self.n_feats, out_size, dtype=y.dtype, device=y.device)
 
-            y_cut_lengths = []
+            y_cut_lengths_list: list[int] = []
             for i, (y_, out_offset_) in enumerate(zip(y, out_offset)):
                 y_cut_length = out_size + (y_lengths[i] - out_size).clamp(None, 0)
-                y_cut_lengths.append(y_cut_length)
+                y_cut_lengths_list.append(int(y_cut_length.item()))
                 cut_lower, cut_upper = out_offset_, out_offset_ + y_cut_length
                 y_cut[i, :, :y_cut_length] = y_[:, cut_lower:cut_upper]
                 attn_cut[i, :, :y_cut_length] = attn[i, :, cut_lower:cut_upper]
 
-            y_cut_lengths = torch.LongTensor(y_cut_lengths)
+            y_cut_lengths = torch.LongTensor(y_cut_lengths_list)
             y_cut_mask = sequence_mask(y_cut_lengths).unsqueeze(1).to(y_mask)
 
             attn = attn_cut

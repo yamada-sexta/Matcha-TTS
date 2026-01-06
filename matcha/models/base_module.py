@@ -4,37 +4,56 @@ This is a base module for Matcha-TTS models using plain PyTorch.
 import inspect
 import os
 from abc import ABC
-from typing import Any, Dict, Optional
+from types import FrameType
+from typing import Any, Dict, List, Optional, Tuple, Type, TypeVar, Union
 
 import torch
 import torch.nn as nn
+from torch.optim import Optimizer
+from torch.optim.lr_scheduler import LRScheduler
 
 from matcha import utils
 from matcha.utils.utils import plot_tensor
 
 log = utils.get_pylogger(__name__)
 
+T = TypeVar("T", bound="BaseModule")
+
 
 class BaseModule(nn.Module, ABC):
     """Base class for Matcha-TTS models without PyTorch Lightning dependency."""
 
-    def __init__(self):
+    _hparams: Dict[str, Any]
+    mel_mean: torch.Tensor
+    mel_std: torch.Tensor
+    out_size: Optional[int]
+    ckpt_loaded_epoch: int
+
+    def __init__(self) -> None:
         super().__init__()
         # Store hyperparameters manually (replaces save_hyperparameters)
-        self._hparams: Dict[str, Any] = {}
+        self._hparams = {}
 
     @property
     def hparams(self) -> Dict[str, Any]:
         """Returns the hyperparameters dictionary."""
         return self._hparams
 
-    def save_hyperparameters(self, *args, ignore=None, logger=True):
+    def save_hyperparameters(
+        self,
+        *args: Any,
+        ignore: Optional[Union[List[str], Tuple[str, ...]]] = None,
+        logger: bool = True,
+    ) -> None:
         """
         Save hyperparameters to self._hparams.
         This mimics Lightning's save_hyperparameters but stores them in a simple dict.
         """
-        frame = inspect.currentframe().f_back
-        init_args = {}
+        current_frame: Optional[FrameType] = inspect.currentframe()
+        if current_frame is None or current_frame.f_back is None:
+            return
+        frame: FrameType = current_frame.f_back
+        init_args: Dict[str, Any] = {}
 
         # Get the signature of the __init__ method
         if hasattr(self, "__init__"):
@@ -50,7 +69,7 @@ class BaseModule(nn.Module, ABC):
 
         self._hparams.update(init_args)
 
-    def update_data_statistics(self, data_statistics):
+    def update_data_statistics(self, data_statistics: Optional[Dict[str, float]]) -> None:
         """Update mel normalization statistics."""
         if data_statistics is None:
             data_statistics = {
@@ -61,7 +80,7 @@ class BaseModule(nn.Module, ABC):
         self.register_buffer("mel_mean", torch.tensor(data_statistics["mel_mean"]))
         self.register_buffer("mel_std", torch.tensor(data_statistics["mel_std"]))
 
-    def get_losses(self, batch):
+    def get_losses(self, batch: Dict[str, Any]) -> Dict[str, torch.Tensor]:
         """Compute losses for a batch."""
         x, x_lengths = batch["x"], batch["x_lengths"]
         y, y_lengths = batch["y"], batch["y_lengths"]
@@ -82,9 +101,16 @@ class BaseModule(nn.Module, ABC):
             "diff_loss": diff_loss,
         }
 
-    def save_checkpoint(self, filepath: str, optimizer=None, scheduler=None, epoch=0, global_step=0):
+    def save_checkpoint(
+        self,
+        filepath: str,
+        optimizer: Optional[Optimizer] = None,
+        scheduler: Optional[LRScheduler] = None,
+        epoch: int = 0,
+        global_step: int = 0,
+    ) -> None:
         """Save model checkpoint."""
-        checkpoint = {
+        checkpoint: Dict[str, Any] = {
             "epoch": epoch,
             "global_step": global_step,
             "state_dict": self.state_dict(),
@@ -100,7 +126,12 @@ class BaseModule(nn.Module, ABC):
         log.info(f"Checkpoint saved to {filepath}")
 
     @classmethod
-    def load_from_checkpoint(cls, checkpoint_path: str, map_location=None, **kwargs):
+    def load_from_checkpoint(
+        cls: Type[T],
+        checkpoint_path: str,
+        map_location: Optional[Union[str, torch.device]] = None,
+        **kwargs: Any,
+    ) -> T:
         """
         Load model from checkpoint file.
         Supports both new format and legacy Lightning format.
@@ -108,9 +139,12 @@ class BaseModule(nn.Module, ABC):
         if map_location is None:
             map_location = torch.device("cpu")
 
-        checkpoint = torch.load(checkpoint_path, map_location=map_location, weights_only=False)
+        checkpoint: Dict[str, Any] = torch.load(
+            checkpoint_path, map_location=map_location, weights_only=False
+        )
 
         # Handle both new and legacy (Lightning) checkpoint formats
+        hparams: Dict[str, Any]
         if "hyper_parameters" in checkpoint:
             hparams = checkpoint["hyper_parameters"]
         elif "hparams" in checkpoint:
