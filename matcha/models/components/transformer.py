@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Union
 
 import torch
 import torch.nn as nn  # pylint: disable=consider-using-from-import
@@ -107,7 +107,7 @@ class FeedForward(nn.Module):
 
         if activation_fn == "gelu":
             act_fn = GELU(dim, inner_dim)
-        if activation_fn == "gelu-approximate":
+        elif activation_fn == "gelu-approximate":
             act_fn = GELU(dim, inner_dim, approximate="tanh")
         elif activation_fn == "geglu":
             act_fn = GEGLU(dim, inner_dim)
@@ -115,6 +115,8 @@ class FeedForward(nn.Module):
             act_fn = ApproximateGELU(dim, inner_dim)
         elif activation_fn == "snakebeta":
             act_fn = SnakeBeta(dim, inner_dim)
+        else:
+            raise ValueError(f"Unknown activation function: {activation_fn}")
 
         self.net = nn.ModuleList([])
         # project in
@@ -186,6 +188,7 @@ class BasicTransformerBlock(nn.Module):
 
         # Define 3 blocks. Each block has its own normalization layer.
         # 1. Self-Attn
+        self.norm1: Union[AdaLayerNorm, AdaLayerNormZero, nn.LayerNorm]
         if self.use_ada_layer_norm:
             self.norm1 = AdaLayerNorm(dim, num_embeds_ada_norm)
         elif self.use_ada_layer_norm_zero:
@@ -203,6 +206,8 @@ class BasicTransformerBlock(nn.Module):
         )
 
         # 2. Cross-Attn
+        self.norm2: Optional[Union[AdaLayerNorm, nn.LayerNorm]]
+        self.attn2: Optional[Attention]
         if cross_attention_dim is not None or double_self_attention:
             # We currently only use AdaLayerNormZero for self attention where there will only be one attention block.
             # I.e. the number of returned modulation chunks from AdaLayerZero would not make sense if returned during
@@ -246,10 +251,16 @@ class BasicTransformerBlock(nn.Module):
         encoder_hidden_states: Optional[torch.FloatTensor] = None,
         encoder_attention_mask: Optional[torch.FloatTensor] = None,
         timestep: Optional[torch.LongTensor] = None,
-        cross_attention_kwargs: Dict[str, Any] = None,
+        cross_attention_kwargs: Optional[Dict[str, Any]] = None,
         class_labels: Optional[torch.LongTensor] = None,
     ):
         # Notice that normalization is always applied before the real computation in the following blocks.
+        # Initialize variables for ada_layer_norm_zero path
+        gate_msa: Optional[torch.Tensor] = None
+        shift_mlp: Optional[torch.Tensor] = None
+        scale_mlp: Optional[torch.Tensor] = None
+        gate_mlp: Optional[torch.Tensor] = None
+
         # 1. Self-Attention
         if self.use_ada_layer_norm:
             norm_hidden_states = self.norm1(hidden_states, timestep)
@@ -269,11 +280,13 @@ class BasicTransformerBlock(nn.Module):
             **cross_attention_kwargs,
         )
         if self.use_ada_layer_norm_zero:
+            assert gate_msa is not None
             attn_output = gate_msa.unsqueeze(1) * attn_output
         hidden_states = attn_output + hidden_states
 
         # 2. Cross-Attention
         if self.attn2 is not None:
+            assert self.norm2 is not None
             norm_hidden_states = (
                 self.norm2(hidden_states, timestep) if self.use_ada_layer_norm else self.norm2(hidden_states)
             )
@@ -290,6 +303,7 @@ class BasicTransformerBlock(nn.Module):
         norm_hidden_states = self.norm3(hidden_states)
 
         if self.use_ada_layer_norm_zero:
+            assert scale_mlp is not None and shift_mlp is not None
             norm_hidden_states = norm_hidden_states * (1 + scale_mlp[:, None]) + shift_mlp[:, None]
 
         if self._chunk_size is not None:
@@ -308,6 +322,7 @@ class BasicTransformerBlock(nn.Module):
             ff_output = self.ff(norm_hidden_states)
 
         if self.use_ada_layer_norm_zero:
+            assert gate_mlp is not None
             ff_output = gate_mlp.unsqueeze(1) * ff_output
 
         hidden_states = ff_output + hidden_states
