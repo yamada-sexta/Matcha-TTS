@@ -1,8 +1,8 @@
 import math
-from typing import Optional
+from typing import List, Optional, Tuple, Union
 
 import torch
-import torch.nn as nn  # pylint: disable=consider-using-from-import
+from torch import nn
 import torch.nn.functional as F
 from conformer import ConformerBlock
 from diffusers.models.activations import get_activation
@@ -12,12 +12,12 @@ from matcha.models.components.transformer import BasicTransformerBlock
 
 
 class SinusoidalPosEmb(torch.nn.Module):
-    def __init__(self, dim):
+    def __init__(self, dim: int) -> None:
         super().__init__()
         self.dim = dim
         assert self.dim % 2 == 0, "SinusoidalPosEmb requires dim to be even"
 
-    def forward(self, x, scale=1000):
+    def forward(self, x: torch.Tensor, scale: int = 1000) -> torch.Tensor:
         if x.ndim < 1:
             x = x.unsqueeze(0)
         device = x.device
@@ -30,7 +30,7 @@ class SinusoidalPosEmb(torch.nn.Module):
 
 
 class Block1D(torch.nn.Module):
-    def __init__(self, dim, dim_out, groups=8):
+    def __init__(self, dim: int, dim_out: int, groups: int = 8) -> None:
         super().__init__()
         self.block = torch.nn.Sequential(
             torch.nn.Conv1d(dim, dim_out, 3, padding=1),
@@ -38,13 +38,13 @@ class Block1D(torch.nn.Module):
             nn.Mish(),
         )
 
-    def forward(self, x, mask):
+    def forward(self, x: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
         output = self.block(x * mask)
         return output * mask
 
 
 class ResnetBlock1D(torch.nn.Module):
-    def __init__(self, dim, dim_out, time_emb_dim, groups=8):
+    def __init__(self, dim: int, dim_out: int, time_emb_dim: int, groups: int = 8) -> None:
         super().__init__()
         self.mlp = torch.nn.Sequential(nn.Mish(), torch.nn.Linear(time_emb_dim, dim_out))
 
@@ -53,7 +53,7 @@ class ResnetBlock1D(torch.nn.Module):
 
         self.res_conv = torch.nn.Conv1d(dim, dim_out, 1)
 
-    def forward(self, x, mask, time_emb):
+    def forward(self, x: torch.Tensor, mask: torch.Tensor, time_emb: torch.Tensor) -> torch.Tensor:
         h = self.block1(x, mask)
         h += self.mlp(time_emb).unsqueeze(-1)
         h = self.block2(h, mask)
@@ -62,11 +62,11 @@ class ResnetBlock1D(torch.nn.Module):
 
 
 class Downsample1D(nn.Module):
-    def __init__(self, dim):
+    def __init__(self, dim: int) -> None:
         super().__init__()
         self.conv = torch.nn.Conv1d(dim, dim, 3, 2, 1)
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.conv(x)
 
 
@@ -76,18 +76,17 @@ class TimestepEmbedding(nn.Module):
         in_channels: int,
         time_embed_dim: int,
         act_fn: str = "silu",
-        out_dim: int = None,
+        out_dim: Optional[int] = None,
         post_act_fn: Optional[str] = None,
-        cond_proj_dim=None,
-    ):
+        cond_proj_dim: Optional[int] = None,
+    ) -> None:
         super().__init__()
 
         self.linear_1 = nn.Linear(in_channels, time_embed_dim)
 
+        self.cond_proj: Optional[nn.Linear] = None
         if cond_proj_dim is not None:
             self.cond_proj = nn.Linear(cond_proj_dim, in_channels, bias=False)
-        else:
-            self.cond_proj = None
 
         self.act = get_activation(act_fn)
 
@@ -97,13 +96,13 @@ class TimestepEmbedding(nn.Module):
             time_embed_dim_out = time_embed_dim
         self.linear_2 = nn.Linear(time_embed_dim, time_embed_dim_out)
 
-        if post_act_fn is None:
-            self.post_act = None
-        else:
+        self.post_act: Optional[nn.Module] = None
+        if post_act_fn is not None:
             self.post_act = get_activation(post_act_fn)
 
-    def forward(self, sample, condition=None):
+    def forward(self, sample: torch.Tensor, condition: Optional[torch.Tensor] = None) -> torch.Tensor:
         if condition is not None:
+            assert self.cond_proj is not None, "cond_proj must be defined when condition is provided"
             sample = sample + self.cond_proj(condition)
         sample = self.linear_1(sample)
 
@@ -131,7 +130,14 @@ class Upsample1D(nn.Module):
             number of output channels. Defaults to `channels`.
     """
 
-    def __init__(self, channels, use_conv=False, use_conv_transpose=True, out_channels=None, name="conv"):
+    def __init__(
+        self,
+        channels: int,
+        use_conv: bool = False,
+        use_conv_transpose: bool = True,
+        out_channels: Optional[int] = None,
+        name: str = "conv",
+    ) -> None:
         super().__init__()
         self.channels = channels
         self.out_channels = out_channels or channels
@@ -139,20 +145,22 @@ class Upsample1D(nn.Module):
         self.use_conv_transpose = use_conv_transpose
         self.name = name
 
-        self.conv = None
+        self.conv: Optional[Union[nn.ConvTranspose1d, nn.Conv1d]] = None
         if use_conv_transpose:
             self.conv = nn.ConvTranspose1d(channels, self.out_channels, 4, 2, 1)
         elif use_conv:
             self.conv = nn.Conv1d(self.channels, self.out_channels, 3, padding=1)
 
-    def forward(self, inputs):
+    def forward(self, inputs: torch.Tensor) -> torch.Tensor:
         assert inputs.shape[1] == self.channels
         if self.use_conv_transpose:
+            assert self.conv is not None
             return self.conv(inputs)
 
         outputs = F.interpolate(inputs, scale_factor=2.0, mode="nearest")
 
         if self.use_conv:
+            assert self.conv is not None
             outputs = self.conv(outputs)
 
         return outputs
@@ -162,17 +170,17 @@ class ConformerWrapper(ConformerBlock):
     def __init__(  # pylint: disable=useless-super-delegation
         self,
         *,
-        dim,
-        dim_head=64,
-        heads=8,
-        ff_mult=4,
-        conv_expansion_factor=2,
-        conv_kernel_size=31,
-        attn_dropout=0,
-        ff_dropout=0,
-        conv_dropout=0,
-        conv_causal=False,
-    ):
+        dim: int,
+        dim_head: int = 64,
+        heads: int = 8,
+        ff_mult: int = 4,
+        conv_expansion_factor: int = 2,
+        conv_kernel_size: int = 31,
+        attn_dropout: float = 0,
+        ff_dropout: float = 0,
+        conv_dropout: float = 0,
+        conv_causal: bool = False,
+    ) -> None:
         super().__init__(
             dim=dim,
             dim_head=dim_head,
@@ -186,33 +194,33 @@ class ConformerWrapper(ConformerBlock):
             conv_causal=conv_causal,
         )
 
-    def forward(
+    def forward(  # type: ignore[override]
         self,
-        hidden_states,
-        attention_mask,
-        encoder_hidden_states=None,
-        encoder_attention_mask=None,
-        timestep=None,
-    ):
+        hidden_states: torch.Tensor,
+        attention_mask: torch.Tensor,
+        encoder_hidden_states: Optional[torch.Tensor] = None,
+        encoder_attention_mask: Optional[torch.Tensor] = None,
+        timestep: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
         return super().forward(x=hidden_states, mask=attention_mask.bool())
 
 
 class Decoder(nn.Module):
     def __init__(
         self,
-        in_channels,
-        out_channels,
-        channels=(256, 256),
-        dropout=0.05,
-        attention_head_dim=64,
-        n_blocks=1,
-        num_mid_blocks=2,
-        num_heads=4,
-        act_fn="snake",
-        down_block_type="transformer",
-        mid_block_type="transformer",
-        up_block_type="transformer",
-    ):
+        in_channels: int,
+        out_channels: int,
+        channels: Union[List[int], Tuple[int, ...]] = (256, 256),
+        dropout: float = 0.05,
+        attention_head_dim: int = 64,
+        n_blocks: int = 1,
+        num_mid_blocks: int = 2,
+        num_heads: int = 4,
+        act_fn: str = "snake",
+        down_block_type: str = "transformer",
+        mid_block_type: str = "transformer",
+        up_block_type: str = "transformer",
+    ) -> None:
         super().__init__()
         channels = tuple(channels)
         self.in_channels = in_channels
@@ -226,9 +234,9 @@ class Decoder(nn.Module):
             act_fn="silu",
         )
 
-        self.down_blocks = nn.ModuleList([])
-        self.mid_blocks = nn.ModuleList([])
-        self.up_blocks = nn.ModuleList([])
+        self.down_blocks: nn.ModuleList = nn.ModuleList()
+        self.mid_blocks: nn.ModuleList = nn.ModuleList()
+        self.up_blocks: nn.ModuleList = nn.ModuleList()
 
         output_channel = in_channels
         for i in range(len(channels)):  # pylint: disable=consider-using-enumerate
@@ -316,7 +324,14 @@ class Decoder(nn.Module):
         # nn.init.normal_(self.final_proj.weight)
 
     @staticmethod
-    def get_block(block_type, dim, attention_head_dim, num_heads, dropout, act_fn):
+    def get_block(
+        block_type: str,
+        dim: int,
+        attention_head_dim: int,
+        num_heads: int,
+        dropout: float,
+        act_fn: str,
+    ) -> Union[ConformerWrapper, BasicTransformerBlock]:
         if block_type == "conformer":
             block = ConformerWrapper(
                 dim=dim,
@@ -342,7 +357,7 @@ class Decoder(nn.Module):
 
         return block
 
-    def initialize_weights(self):
+    def initialize_weights(self) -> None:
         for m in self.modules():
             if isinstance(m, nn.Conv1d):
                 nn.init.kaiming_normal_(m.weight, nonlinearity="relu")
@@ -360,22 +375,27 @@ class Decoder(nn.Module):
                 if m.bias is not None:
                     nn.init.constant_(m.bias, 0)
 
-    def forward(self, x, mask, mu, t, spks=None, cond=None):
+    def forward(
+        self,
+        x: torch.Tensor,
+        mask: torch.Tensor,
+        mu: torch.Tensor,
+        t: torch.Tensor,
+        spks: Optional[torch.Tensor] = None,
+        cond: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
         """Forward pass of the UNet1DConditional model.
 
         Args:
             x (torch.Tensor): shape (batch_size, in_channels, time)
-            mask (_type_): shape (batch_size, 1, time)
-            t (_type_): shape (batch_size)
-            spks (_type_, optional): shape: (batch_size, condition_channels). Defaults to None.
-            cond (_type_, optional): placeholder for future use. Defaults to None.
-
-        Raises:
-            ValueError: _description_
-            ValueError: _description_
+            mask (torch.Tensor): shape (batch_size, 1, time)
+            mu (torch.Tensor): shape (batch_size, in_channels, time)
+            t (torch.Tensor): shape (batch_size)
+            spks (torch.Tensor, optional): shape: (batch_size, condition_channels). Defaults to None.
+            cond (torch.Tensor, optional): placeholder for future use. Defaults to None.
 
         Returns:
-            _type_: _description_
+            torch.Tensor: Output tensor with shape (batch_size, out_channels, time)
         """
 
         t = self.time_embeddings(t)
@@ -385,11 +405,12 @@ class Decoder(nn.Module):
 
         if spks is not None:
             spks = repeat(spks, "b c -> b c t", t=x.shape[-1])
-            x = pack([x, spks], "b * t")[0]
+            x = pack([x, spks], "b * t")[0]  # type: ignore[assignment]
 
-        hiddens = []
-        masks = [mask]
-        for resnet, transformer_blocks, downsample in self.down_blocks:
+        hiddens: List[torch.Tensor] = []
+        masks: List[torch.Tensor] = [mask]
+        mask_up = mask  # Initialize mask_up for type checker
+        for resnet, transformer_blocks, downsample in self.down_blocks:  # type: ignore[misc]
             mask_down = masks[-1]
             x = resnet(x, mask_down, t)
             x = rearrange(x, "b c t -> b t c")
@@ -409,7 +430,7 @@ class Decoder(nn.Module):
         masks = masks[:-1]
         mask_mid = masks[-1]
 
-        for resnet, transformer_blocks in self.mid_blocks:
+        for resnet, transformer_blocks in self.mid_blocks:  # type: ignore[misc]
             x = resnet(x, mask_mid, t)
             x = rearrange(x, "b c t -> b t c")
             mask_mid = rearrange(mask_mid, "b 1 t -> b t")
@@ -422,7 +443,7 @@ class Decoder(nn.Module):
             x = rearrange(x, "b t c -> b c t")
             mask_mid = rearrange(mask_mid, "b t -> b 1 t")
 
-        for resnet, transformer_blocks, upsample in self.up_blocks:
+        for resnet, transformer_blocks, upsample in self.up_blocks:  # type: ignore[misc]
             mask_up = masks.pop()
             x = resnet(pack([x, hiddens.pop()], "b * t")[0], mask_up, t)
             x = rearrange(x, "b c t -> b t c")
