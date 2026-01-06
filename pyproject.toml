@@ -25,6 +25,7 @@ dependencies = [
     "notebook>=7.4.7",
     "numpy>=1.26.4",
     "pandas>=2.3.3",
+    "peft>=0.18.0",
     "phonemizer>=3.3.0",
     "pre-commit>=4.3.0",
     "pytest>=8.4.2",

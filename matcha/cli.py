@@ -70,9 +70,11 @@ def get_texts(args):
 
 def assert_required_models_available(args):
     save_dir = get_user_data_dir()
-    if not hasattr(args, "checkpoint_path") and args.checkpoint_path is None:
+    if hasattr(args, "checkpoint_path") and args.checkpoint_path is not None:
+        # Using custom checkpoint path
         model_path = args.checkpoint_path
     else:
+        # Using pretrained model
         model_path = save_dir / f"{args.model}.ckpt"
         assert_model_downloaded(model_path, MATCHA_URLS[args.model])
 
@@ -106,11 +108,11 @@ def load_vocoder(vocoder_name, checkpoint_path, device):
 
 
 def load_matcha(model_name, checkpoint_path, device):
-    print(f"[!] Loading {model_name}!")
+    print(f"[!] Loading {model_name} from: {checkpoint_path}")
     model = MatchaTTS.load_from_checkpoint(checkpoint_path, map_location=device)
     _ = model.eval()
 
-    print(f"[+] {model_name} loaded!")
+    print(f"[+] {model_name} loaded successfully!")
     return model
 
 
@@ -398,6 +400,8 @@ def unbatched_synthesis(args, device, model, vocoder, denoiser, texts, spk):
 def print_config(args):
     print("[!] Configurations: ")
     print(f"\t- Model: {args.model}")
+    if hasattr(args, "checkpoint_path") and args.checkpoint_path is not None:
+        print(f"\t- Custom Checkpoint: {args.checkpoint_path}")
     print(f"\t- Vocoder: {args.vocoder}")
     print(f"\t- Temperature: {args.temperature}")
     print(f"\t- Speaking rate: {args.speaking_rate}")
