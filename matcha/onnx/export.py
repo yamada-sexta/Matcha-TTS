@@ -4,7 +4,7 @@ from pathlib import Path
 
 import numpy as np
 import torch
-from lightning import LightningModule
+import torch.nn as nn
 
 from matcha.cli import VOCODER_URLS, load_matcha, load_vocoder
 
@@ -19,7 +19,7 @@ torch.backends.cudnn.deterministic = True
 torch.backends.cudnn.benchmark = False
 
 
-class MatchaWithVocoder(LightningModule):
+class MatchaWithVocoder(nn.Module):
     def __init__(self, matcha, vocoder):
         super().__init__()
         self.matcha = matcha
@@ -164,9 +164,11 @@ def main():
     # Create the output directory (if not exists)
     Path(args.output).parent.mkdir(parents=True, exist_ok=True)
 
-    model.to_onnx(
-        args.output,
+    # Export using native PyTorch ONNX export
+    torch.onnx.export(
+        model,
         dummy_input,
+        args.output,
         input_names=input_names,
         output_names=output_names,
         dynamic_axes=dynamic_axes,

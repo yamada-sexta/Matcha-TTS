@@ -110,6 +110,7 @@ def load_vocoder(vocoder_name, checkpoint_path, device):
 def load_matcha(model_name, checkpoint_path, device):
     print(f"[!] Loading {model_name} from: {checkpoint_path}")
     model = MatchaTTS.load_from_checkpoint(checkpoint_path, map_location=device)
+    model = model.to(device)
     _ = model.eval()
 
     print(f"[+] {model_name} loaded successfully!")
@@ -149,7 +150,10 @@ def validate_args(args):
             args = validate_args_for_multispeaker_model(args)
     else:
         # When using a custom model
-        if args.vocoder != "hifigan_univ_v1":
+        if args.vocoder is None:
+            # Default to hifigan_T2_v1 for custom models (works well with LJSpeech-trained models)
+            args.vocoder = "hifigan_T2_v1"
+        elif args.vocoder != "hifigan_univ_v1":
             warn_ = "[-] Using custom model checkpoint! I would suggest passing --vocoder hifigan_univ_v1, unless the custom model is trained on LJ Speech."
             warnings.warn(warn_, UserWarning)
         if args.speaking_rate is None:

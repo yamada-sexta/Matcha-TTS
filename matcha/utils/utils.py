@@ -105,7 +105,7 @@ def task_wrapper(task_func: Callable) -> Callable:
 
 
 def get_metric_value(metric_dict: Dict[str, Any], metric_name: str) -> float:
-    """Safely retrieves value of the metric logged in LightningModule.
+    """Safely retrieves value of a metric.
 
     :param metric_dict: A dict containing metric values.
     :param metric_name: The name of the metric to retrieve.
@@ -118,11 +118,13 @@ def get_metric_value(metric_dict: Dict[str, Any], metric_name: str) -> float:
     if metric_name not in metric_dict:
         raise ValueError(
             f"Metric value not found! <metric_name={metric_name}>\n"
-            "Make sure metric name logged in LightningModule is correct!\n"
+            "Make sure the metric name is correct!\n"
             "Make sure `optimized_metric` name in `hparams_search` config is correct!"
         )
 
-    metric_value = metric_dict[metric_name].item()
+    metric_value = metric_dict[metric_name]
+    if hasattr(metric_value, 'item'):
+        metric_value = metric_value.item()
     log.info(f"Retrieved metric value! <{metric_name}={metric_value}>")
 
     return metric_value

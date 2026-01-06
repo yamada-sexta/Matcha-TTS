@@ -1,5 +1,7 @@
-defaults:
-  - model_checkpoint.yaml
-  - model_summary.yaml
-  - rich_progress_bar.yaml
-  - _self_
+# Callbacks configuration (not used in plain PyTorch training loop)
+# The training script handles checkpointing and progress display internally
+model_checkpoint:
+  save_top_k: 1
+  monitor: "loss/val"
+  mode: "min"
+  save_last: true

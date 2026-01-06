@@ -2,4 +2,4 @@ defaults:
   - default
 
 accelerator: cpu
-devices: 1
+device: null

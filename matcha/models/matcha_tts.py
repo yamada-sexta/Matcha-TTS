@@ -7,7 +7,7 @@ import torch
 
 import matcha.utils.monotonic_align as monotonic_align  # pylint: disable=consider-using-from-import
 from matcha import utils
-from matcha.models.baselightningmodule import BaseLightningClass
+from matcha.models.base_module import BaseModule
 from matcha.models.components.flow_matching import CFM
 from matcha.models.components.text_encoder import TextEncoder
 from matcha.utils.model import (
@@ -21,7 +21,7 @@ from matcha.utils.model import (
 log = utils.get_pylogger(__name__)
 
 
-class MatchaTTS(BaseLightningClass):  # 🍵
+class MatchaTTS(BaseModule):  # 🍵
     def __init__(
         self,
         n_vocab: int,

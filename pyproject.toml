@@ -20,7 +20,6 @@ dependencies = [
     "inflect>=7.5.0",
     "ipywidgets>=8.1.8",
     "librosa>=0.11.0",
-    "lightning>=2.0.0",
     "matplotlib>=3.10.7",
     "notebook>=7.4.7",
     "numpy>=1.26.4",
@@ -39,6 +38,7 @@ dependencies = [
     "torchcodec>=0.9.1",
     "torchmetrics>=0.11.4",
     "torchvision>=0.15.0",
+    "tqdm>=4.66.0",
     "unidecode>=1.4.0",
     "wget>=3.2",
 ]

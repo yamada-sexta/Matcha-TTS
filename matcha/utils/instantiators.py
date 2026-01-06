@@ -1,8 +1,11 @@
-from typing import List
+"""
+Legacy instantiators module.
+These functions were used with PyTorch Lightning and are kept for backwards compatibility.
+The plain PyTorch training script does not use these.
+"""
+from typing import Any, List
 
 import hydra
-from lightning import Callback
-from lightning.pytorch.loggers import Logger
 from omegaconf import DictConfig
 
 from matcha.utils import pylogger
@@ -10,13 +13,13 @@ from matcha.utils import pylogger
 log = pylogger.get_pylogger(__name__)
 
 
-def instantiate_callbacks(callbacks_cfg: DictConfig) -> List[Callback]:
-    """Instantiates callbacks from config.
+def instantiate_callbacks(callbacks_cfg: DictConfig) -> List[Any]:
+    """Instantiates callbacks from config (legacy function).
 
     :param callbacks_cfg: A DictConfig object containing callback configurations.
     :return: A list of instantiated callbacks.
     """
-    callbacks: List[Callback] = []
+    callbacks: List[Any] = []
 
     if not callbacks_cfg:
         log.warning("No callback configs found! Skipping..")
@@ -33,13 +36,13 @@ def instantiate_callbacks(callbacks_cfg: DictConfig) -> List[Callback]:
     return callbacks
 
 
-def instantiate_loggers(logger_cfg: DictConfig) -> List[Logger]:
-    """Instantiates loggers from config.
+def instantiate_loggers(logger_cfg: DictConfig) -> List[Any]:
+    """Instantiates loggers from config (legacy function).
 
     :param logger_cfg: A DictConfig object containing logger configurations.
     :return: A list of instantiated loggers.
     """
-    logger: List[Logger] = []
+    logger: List[Any] = []
 
     if not logger_cfg:
         log.warning("No logger configs found! Skipping...")

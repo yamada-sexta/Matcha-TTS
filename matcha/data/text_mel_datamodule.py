@@ -5,7 +5,6 @@ from typing import Any, Dict, Optional
 import numpy as np
 import torch
 import torchaudio as ta
-from lightning import LightningDataModule
 from torch.utils.data.dataloader import DataLoader
 
 from matcha.text import text_to_sequence
@@ -20,7 +19,9 @@ def parse_filelist(filelist_path, split_char="|"):
     return filepaths_and_text
 
 
-class TextMelDataModule(LightningDataModule):
+class TextMelDataModule:
+    """Data module for text-mel dataset without PyTorch Lightning dependency."""
+
     def __init__(  # pylint: disable=unused-argument
         self,
         name,
@@ -43,21 +44,37 @@ class TextMelDataModule(LightningDataModule):
         seed,
         load_durations,
     ):
-        super().__init__()
+        # Store hyperparameters as a simple namespace-like object
+        self.hparams = type("Hparams", (), {
+            "name": name,
+            "train_filelist_path": train_filelist_path,
+            "valid_filelist_path": valid_filelist_path,
+            "batch_size": batch_size,
+            "num_workers": num_workers,
+            "pin_memory": pin_memory,
+            "cleaners": cleaners,
+            "add_blank": add_blank,
+            "n_spks": n_spks,
+            "n_fft": n_fft,
+            "n_feats": n_feats,
+            "sample_rate": sample_rate,
+            "hop_length": hop_length,
+            "win_length": win_length,
+            "f_min": f_min,
+            "f_max": f_max,
+            "data_statistics": data_statistics,
+            "seed": seed,
+            "load_durations": load_durations,
+        })()
 
-        # this line allows to access init params with 'self.hparams' attribute
-        # also ensures init params will be stored in ckpt
-        self.save_hyperparameters(logger=False)
+        self.trainset = None
+        self.validset = None
 
     def setup(self, stage: Optional[str] = None):  # pylint: disable=unused-argument
-        """Load data. Set variables: `self.data_train`, `self.data_val`, `self.data_test`.
-
-        This method is called by lightning with both `trainer.fit()` and `trainer.test()`, so be
-        careful not to execute things like random split twice!
-        """
+        """Load data. Set variables: `self.trainset`, `self.validset`."""
         # load and split datasets only if not loaded already
 
-        self.trainset = TextMelDataset(  # pylint: disable=attribute-defined-outside-init
+        self.trainset = TextMelDataset(
             self.hparams.train_filelist_path,
             self.hparams.n_spks,
             self.hparams.cleaners,
@@ -73,7 +90,7 @@ class TextMelDataModule(LightningDataModule):
             self.hparams.seed,
             self.hparams.load_durations,
         )
-        self.validset = TextMelDataset(  # pylint: disable=attribute-defined-outside-init
+        self.validset = TextMelDataset(
             self.hparams.valid_filelist_path,
             self.hparams.n_spks,
             self.hparams.cleaners,

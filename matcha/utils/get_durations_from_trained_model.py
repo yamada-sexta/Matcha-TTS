@@ -10,7 +10,6 @@ import os
 import sys
 from pathlib import Path
 
-import lightning
 import numpy as np
 import rootutils
 import torch
@@ -22,10 +21,10 @@ from tqdm.auto import tqdm
 from matcha.cli import get_device
 from matcha.data.text_mel_datamodule import TextMelDataModule
 from matcha.models.matcha_tts import MatchaTTS
-from matcha.utils.logging_utils import pylogger
+from matcha.utils.pylogger import get_pylogger
 from matcha.utils.utils import get_phoneme_durations
 
-log = pylogger.get_pylogger(__name__)
+log = get_pylogger(__name__)
 
 
 def save_durations_to_folder(
@@ -166,22 +165,15 @@ def main():
         print("Computing stats for training set if exists...")
         train_dataloader = text_mel_datamodule.train_dataloader()
         compute_durations(train_dataloader, model, device, output_folder)
-    except lightning.fabric.utilities.exceptions.MisconfigurationException:
-        print("No training set found")
+    except Exception as e:
+        print(f"No training set found: {e}")
 
     try:
         print("Computing stats for validation set if exists...")
         val_dataloader = text_mel_datamodule.val_dataloader()
         compute_durations(val_dataloader, model, device, output_folder)
-    except lightning.fabric.utilities.exceptions.MisconfigurationException:
-        print("No validation set found")
-
-    try:
-        print("Computing stats for test set if exists...")
-        test_dataloader = text_mel_datamodule.test_dataloader()
-        compute_durations(test_dataloader, model, device, output_folder)
-    except lightning.fabric.utilities.exceptions.MisconfigurationException:
-        print("No test set found")
+    except Exception as e:
+        print(f"No validation set found: {e}")
 
     print(f"[+] Done! Data statistics saved to: {output_folder}")
 

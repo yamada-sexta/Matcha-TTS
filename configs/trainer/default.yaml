@@ -1,20 +1,23 @@
-_target_: lightning.pytorch.trainer.Trainer
+# Training configuration (plain PyTorch)
 
-default_root_dir: ${paths.output_dir}
+# Maximum number of epochs (-1 for unlimited)
+max_epochs: 1000
 
-max_epochs: -1
-
+# Device configuration (gpu or cpu)
 accelerator: gpu
-devices: [0]
+device: 0
 
-# mixed precision for extra speed-up
-precision: 16-mixed
+# Mixed precision training (not used in simple PyTorch loop, can be added later)
+# precision: 16-mixed
 
-# perform a validation loop every N training epochs
-check_val_every_n_epoch: 1
+# Validation frequency
+val_check_interval: 1.0
 
-# set True to to ensure deterministic results
-# makes training slower but gives more reproducibility than just setting seeds
-deterministic: False
+# Logging frequency
+log_every_n_steps: 50
 
+# Gradient clipping
 gradient_clip_val: 5.0
+
+# Deterministic mode
+deterministic: False

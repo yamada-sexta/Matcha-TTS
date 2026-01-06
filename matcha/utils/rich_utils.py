@@ -5,7 +5,6 @@ import rich
 import rich.syntax
 import rich.tree
 from hydra.core.hydra_config import HydraConfig
-from lightning.pytorch.utilities import rank_zero_only
 from omegaconf import DictConfig, OmegaConf, open_dict
 from rich.prompt import Prompt
 
@@ -14,7 +13,6 @@ from matcha.utils import pylogger
 log = pylogger.get_pylogger(__name__)
 
 
-@rank_zero_only
 def print_config_tree(
     cfg: DictConfig,
     print_order: Sequence[str] = (
@@ -76,7 +74,6 @@ def print_config_tree(
             rich.print(tree, file=file)
 
 
-@rank_zero_only
 def enforce_tags(cfg: DictConfig, save_to_file: bool = False) -> None:
     """Prompts user to input tags from command line if no tags are provided in config.
 
