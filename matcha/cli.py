@@ -44,7 +44,7 @@ def plot_spectrogram_to_numpy(
     plt.colorbar(im, ax=ax)
     plt.xlabel("Frames")
     plt.ylabel("Channels")
-    plt.title("Synthesised Mel-Spectrogram")
+    plt.title("Synthesized Mel-Spectrogram")
     fig.canvas.draw()
     plt.savefig(filename)
 
@@ -354,7 +354,7 @@ def batched_synthesis(
         i = i + 1
         start_t = dt.datetime.now()
         b = batch["x"].shape[0]
-        output = model.synthesise(
+        output = model.synthesis(
             batch["x"].to(device),
             batch["x_lengths"].to(device),
             n_timesteps=args.steps,
@@ -404,7 +404,7 @@ def unbatched_synthesis(
 
         print(f"[🍵] Whisking Matcha-T(ea)TS for: {i}")
         start_t = dt.datetime.now()
-        output = model.synthesise(
+        output = model.synthesis(
             text_processed["x"],
             text_processed["x_lengths"],
             n_timesteps=args.steps,

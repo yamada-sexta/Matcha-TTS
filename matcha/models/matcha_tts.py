@@ -74,7 +74,7 @@ class MatchaTTS(BaseModule):  # 🍵
         self.update_data_statistics(data_statistics)
 
     @torch.inference_mode()
-    def synthesise(
+    def synthesis(
         self,
         x: torch.Tensor,
         x_lengths: torch.Tensor,

@@ -199,7 +199,7 @@ def log_validation_images(
                 else None
             )
 
-            output = model.synthesise(
+            output = model.synthesis(
                 x[:, :x_lengths], x_lengths, n_timesteps=10, spks=spks
             )
             y_enc, y_dec = output["encoder_outputs"], output["decoder_outputs"]
