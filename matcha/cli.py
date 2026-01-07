@@ -87,7 +87,7 @@ def assert_required_models_available(args: argparse.Namespace) -> dict[str, Unio
     return {"matcha": model_path, "vocoder": vocoder_path}
 
 
-def load_hifigan(checkpoint_path: Union[str, Path], device: torch.device) -> HiFiGAN:
+def load_hifigan(checkpoint_path: Union[str, Path], device: torch.device | str) -> HiFiGAN:
     h = AttrDict(v1)
     hifigan = HiFiGAN(h).to(device)
     hifigan.load_state_dict(torch.load(checkpoint_path, map_location=device)["generator"])
@@ -97,7 +97,7 @@ def load_hifigan(checkpoint_path: Union[str, Path], device: torch.device) -> HiF
 
 
 def load_vocoder(
-    vocoder_name: str, checkpoint_path: Union[str, Path], device: torch.device
+    vocoder_name: str, checkpoint_path: Union[str, Path], device: torch.device | str
 ) -> tuple[HiFiGAN, Denoiser]:
     print(f"[!] Loading {vocoder_name}!")
     vocoder = None

@@ -2,6 +2,8 @@
 Plain PyTorch training script for Matcha-TTS.
 Replaces the PyTorch Lightning trainer with a simple training loop.
 """
+
+from typing import Union
 import os
 import random
 from datetime import datetime
@@ -52,7 +54,7 @@ def create_model(cfg: DictConfig) -> MatchaTTS:
     # Convert encoder to namespace-like object (it uses attribute access)
     from types import SimpleNamespace
 
-    def dict_to_namespace(d):
+    def dict_to_namespace(d: Union[dict, Any]) -> SimpleNamespace:
         if isinstance(d, dict):
             return SimpleNamespace(**{k: dict_to_namespace(v) for k, v in d.items()})
         return d
@@ -70,7 +72,11 @@ def create_model(cfg: DictConfig) -> MatchaTTS:
         encoder=encoder,
         decoder=decoder,
         cfm=cfm,
-        data_statistics=OmegaConf.to_container(model_cfg.data_statistics, resolve=True) if model_cfg.data_statistics else None,
+        data_statistics=(
+            OmegaConf.to_container(model_cfg.data_statistics, resolve=True)
+            if model_cfg.data_statistics
+            else None
+        ),
         out_size=model_cfg.out_size,
         prior_loss=model_cfg.get("prior_loss", True),
         use_precomputed_durations=model_cfg.get("use_precomputed_durations", False),
@@ -101,18 +107,27 @@ def create_scheduler(optimizer: torch.optim.Optimizer, cfg: DictConfig):
         scheduler_class_name = scheduler_cfg.scheduler._target_.split(".")[-1]
         scheduler_class = getattr(torch.optim.lr_scheduler, scheduler_class_name, None)
         if scheduler_class:
-            scheduler_container = OmegaConf.to_container(scheduler_cfg.scheduler, resolve=True)
+            scheduler_container = OmegaConf.to_container(
+                scheduler_cfg.scheduler, resolve=True
+            )
             if isinstance(scheduler_container, dict):
-                scheduler_params = {k: v for k, v in scheduler_container.items()
-                                  if k != "_target_" and k != "_partial_"}
+                scheduler_params = {
+                    k: v
+                    for k, v in scheduler_container.items()
+                    if k != "_target_" and k != "_partial_"
+                }
                 return scheduler_class(optimizer, **scheduler_params)
     return None
 
 
-def train_step(model: MatchaTTS, batch: Dict[str, Any], device: torch.device) -> Dict[str, Any]:
+def train_step(
+    model: MatchaTTS, batch: Dict[str, Any], device: torch.device
+) -> Dict[str, Any]:
     """Perform a single training step."""
     # Move batch to device
-    batch = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in batch.items()}
+    batch = {
+        k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in batch.items()
+    }
 
     # Get losses
     loss_dict = model.get_losses(batch)
@@ -125,11 +140,14 @@ def train_step(model: MatchaTTS, batch: Dict[str, Any], device: torch.device) ->
 def validate(model: MatchaTTS, val_loader, device: torch.device) -> Dict[str, float]:
     """Run validation and return average losses."""
     model.eval()
-    total_losses: Dict[str, float] = {"dur_loss": 0.0, "prior_loss": 0.0, "diff_loss": 0.0, "loss": 0.0}
+    total_losses = {"dur_loss": 0.0, "prior_loss": 0.0, "diff_loss": 0.0, "loss": 0.0}
     num_batches = 0
 
     for batch in val_loader:
-        batch = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in batch.items()}
+        batch = {
+            k: v.to(device) if isinstance(v, torch.Tensor) else v
+            for k, v in batch.items()
+        }
         loss_dict = model.get_losses(batch)
         total_loss: torch.Tensor = sum(loss_dict.values())  # type: ignore[assignment]
 
@@ -175,9 +193,15 @@ def log_validation_images(
         for i in range(min(2, one_batch["x"].shape[0])):
             x = one_batch["x"][i].unsqueeze(0).to(device)
             x_lengths = one_batch["x_lengths"][i].unsqueeze(0).to(device)
-            spks = one_batch["spks"][i].unsqueeze(0).to(device) if one_batch["spks"] is not None else None
+            spks = (
+                one_batch["spks"][i].unsqueeze(0).to(device)
+                if one_batch["spks"] is not None
+                else None
+            )
 
-            output = model.synthesise(x[:, :x_lengths], x_lengths, n_timesteps=10, spks=spks)
+            output = model.synthesise(
+                x[:, :x_lengths], x_lengths, n_timesteps=10, spks=spks
+            )
             y_enc, y_dec = output["encoder_outputs"], output["decoder_outputs"]
             attn = output["attn"]
 
@@ -208,8 +232,7 @@ def log_validation_images(
 def train(cfg: DictConfig) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     """Main training function."""
     # Set seed
-    if cfg.get("seed"):
-        set_seed(cfg.seed)
+    cfg.get("seed") and set_seed(cfg.seed)
 
     # Setup output directory
     output_dir = Path(cfg.paths.output_dir)
@@ -256,7 +279,7 @@ def train(cfg: DictConfig) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         win_length=cfg.data.win_length,
         f_min=cfg.data.f_min,
         f_max=cfg.data.f_max,
-        data_statistics=OmegaConf.to_container(cfg.data.data_statistics, resolve=True) if cfg.data.data_statistics else None,
+        data_statistics=dict(OmegaConf.to_container(cfg.data.data_statistics, resolve=True)) if cfg.data.data_statistics else None,  # type: ignore[arg-type]
         seed=cfg.seed,
         load_durations=cfg.data.load_durations,
     )
@@ -272,7 +295,7 @@ def train(cfg: DictConfig) -> Tuple[Dict[str, Any], Dict[str, Any]]:
 
     # Create model
     log.info(f"Instantiating model <{cfg.model._target_}>")
-    model = create_model(cfg)
+    model: MatchaTTS = create_model(cfg)
     model = model.to(device)
 
     # Count parameters
@@ -325,10 +348,20 @@ def train(cfg: DictConfig) -> Tuple[Dict[str, Any], Dict[str, Any]]:
 
     # Initialize to avoid uninitialized variable errors
     avg_epoch_loss: float = 0.0
-    val_losses: Dict[str, float] = {"dur_loss": 0.0, "prior_loss": 0.0, "diff_loss": 0.0, "loss": 0.0}
+    val_losses: Dict[str, float] = {
+        "dur_loss": 0.0,
+        "prior_loss": 0.0,
+        "diff_loss": 0.0,
+        "loss": 0.0,
+    }
 
     for epoch in range(start_epoch, max_epochs):
-        epoch_losses: Dict[str, float] = {"dur_loss": 0.0, "prior_loss": 0.0, "diff_loss": 0.0, "loss": 0.0}
+        epoch_losses: Dict[str, float] = {
+            "dur_loss": 0.0,
+            "prior_loss": 0.0,
+            "diff_loss": 0.0,
+            "loss": 0.0,
+        }
         num_batches = 0
 
         pbar = tqdm(train_loader, desc=f"Epoch {epoch + 1}/{max_epochs}")
@@ -365,9 +398,33 @@ def train(cfg: DictConfig) -> Tuple[Dict[str, Any], Dict[str, Any]]:
             # Log to tensorboard
             if global_step % log_every_n_steps == 0:
                 writer.add_scalar("loss/train", loss.item(), global_step)
-                writer.add_scalar("sub_loss/train_dur_loss", loss_dict["dur_loss"].item() if isinstance(loss_dict["dur_loss"], torch.Tensor) else loss_dict["dur_loss"], global_step)
-                writer.add_scalar("sub_loss/train_prior_loss", loss_dict["prior_loss"].item() if isinstance(loss_dict["prior_loss"], torch.Tensor) else loss_dict["prior_loss"], global_step)
-                writer.add_scalar("sub_loss/train_diff_loss", loss_dict["diff_loss"].item() if isinstance(loss_dict["diff_loss"], torch.Tensor) else loss_dict["diff_loss"], global_step)
+                writer.add_scalar(
+                    "sub_loss/train_dur_loss",
+                    (
+                        loss_dict["dur_loss"].item()
+                        if isinstance(loss_dict["dur_loss"], torch.Tensor)
+                        else loss_dict["dur_loss"]
+                    ),
+                    global_step,
+                )
+                writer.add_scalar(
+                    "sub_loss/train_prior_loss",
+                    (
+                        loss_dict["prior_loss"].item()
+                        if isinstance(loss_dict["prior_loss"], torch.Tensor)
+                        else loss_dict["prior_loss"]
+                    ),
+                    global_step,
+                )
+                writer.add_scalar(
+                    "sub_loss/train_diff_loss",
+                    (
+                        loss_dict["diff_loss"].item()
+                        if isinstance(loss_dict["diff_loss"], torch.Tensor)
+                        else loss_dict["diff_loss"]
+                    ),
+                    global_step,
+                )
                 writer.add_scalar("step", global_step, global_step)
 
                 # Log learning rate
