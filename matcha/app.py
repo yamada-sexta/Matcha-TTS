@@ -107,7 +107,7 @@ def process_text_gradio(text):
 @torch.inference_mode()
 def synthesise_mel(text, text_length, n_timesteps, temperature, length_scale, spk):
     spk = torch.tensor([spk], device=device, dtype=torch.long) if spk >= 0 else None
-    output = model.synthesise(
+    output = model.synthesis(
         text,
         text_length,
         n_timesteps=n_timesteps,

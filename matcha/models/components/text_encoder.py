@@ -5,7 +5,7 @@ import math
 import torch
 import torch.nn as nn  # pylint: disable=consider-using-from-import
 from einops import rearrange
-from typing import Any, Dict, List, Tuple, TypedDict
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 import matcha.utils as utils  # pylint: disable=consider-using-from-import
 from matcha.utils.model import sequence_mask
 
@@ -74,7 +74,8 @@ class ConvReluNorm(nn.Module):
             self.norm_layers.append(LayerNorm(hidden_channels))
         self.proj = torch.nn.Conv1d(hidden_channels, out_channels, 1)
         self.proj.weight.data.zero_()
-        self.proj.bias.data.zero_()
+        if self.proj.bias is not None:
+            self.proj.bias.data.zero_()
 
     def forward(self, x, x_mask):
         x_org = x
@@ -192,6 +193,7 @@ class RotaryPositionalEmbeddings(nn.Module):
         # $[-x^{(\frac{d}{2} + 1)}, -x^{(\frac{d}{2} + 2)}, ..., -x^{(d)}, x^{(1)}, x^{(2)}, ..., x^{(\frac{d}{2})}]$
         neg_half_x = self._neg_half(x_rope)
 
+        assert self.cos_cached is not None and self.sin_cached is not None
         x_rope = (x_rope * self.cos_cached[: x.shape[0]]) + (
             neg_half_x * self.sin_cached[: x.shape[0]]
         )
@@ -237,7 +239,8 @@ class MultiHeadAttention(nn.Module):
         torch.nn.init.xavier_uniform_(self.conv_k.weight)
         if proximal_init:
             self.conv_k.weight.data.copy_(self.conv_q.weight.data)
-            self.conv_k.bias.data.copy_(self.conv_q.bias.data)
+            if self.conv_k.bias is not None and self.conv_q.bias is not None:
+                self.conv_k.bias.data.copy_(self.conv_q.bias.data)
         torch.nn.init.xavier_uniform_(self.conv_v.weight)
 
     def forward(self, x, c, attn_mask=None):
@@ -364,20 +367,20 @@ class Encoder(nn.Module):
         return x
 
 
+from typing import Protocol
+
 TextEncoderType = str
-TextEncoderParams = TypedDict(
-    "TextEncoderParams",
-    {
-        "n_feats": int,
-        "n_channels": int,
-        "filter_channels": int,
-        "n_heads": int,
-        "n_layers": int,
-        "kernel_size": int,
-        "p_dropout": float,
-        "prenet": bool,
-    },
-)
+
+
+class TextEncoderParams(Protocol):
+    n_feats: int
+    n_channels: int
+    filter_channels: int
+    n_heads: int
+    n_layers: int
+    kernel_size: int
+    p_dropout: float
+    prenet: bool
 
 
 class TextEncoder(nn.Module):
@@ -401,6 +404,7 @@ class TextEncoder(nn.Module):
         self.emb = torch.nn.Embedding(n_vocab, self.n_channels)
         torch.nn.init.normal_(self.emb.weight, 0.0, self.n_channels**-0.5)
 
+        self.prenet: Union[ConvReluNorm, Callable[[torch.Tensor, torch.Tensor], torch.Tensor]]
         if encoder_params.prenet:
             self.prenet = ConvReluNorm(
                 self.n_channels,
@@ -456,7 +460,7 @@ class TextEncoder(nn.Module):
         x_mask = torch.unsqueeze(sequence_mask(x_lengths, x.size(2)), 1).to(x.dtype)
 
         x = self.prenet(x, x_mask)
-        if self.n_spks > 1:
+        if self.n_spks > 1 and spks is not None:
             x = torch.cat([x, spks.unsqueeze(-1).repeat(1, 1, x.shape[-1])], dim=1)
         x = self.encoder(x, x_mask)
         mu = self.proj_m(x) * x_mask
