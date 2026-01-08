@@ -5,7 +5,7 @@ from typing import Any, Dict, Optional, Tuple, Union
 
 import torch
 
-import matcha.utils.monotonic_align as monotonic_align  # pylint: disable=consider-using-from-import
+# import matcha.utils.monotonic_align as monotonic_align  # pylint: disable=consider-using-from-import
 from matcha import utils
 from matcha.models.base_module import BaseModule
 from matcha.models.components.flow_matching import CFM
@@ -17,6 +17,7 @@ from matcha.utils.model import (
     generate_path,
     sequence_mask,
 )
+from matcha.utils import monotonic_align
 
 log = utils.get_pylogger(__name__)
 
