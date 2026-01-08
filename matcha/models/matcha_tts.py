@@ -1,11 +1,9 @@
+from types import SimpleNamespace
 import datetime as dt
 import math
 import random
 from typing import Any, Dict, Optional, Tuple, Union
-
 import torch
-
-# import matcha.utils.monotonic_align as monotonic_align  # pylint: disable=consider-using-from-import
 from matcha import utils
 from matcha.models.base_module import BaseModule
 from matcha.models.components.flow_matching import CFM
@@ -29,10 +27,10 @@ class MatchaTTS(BaseModule):  # 🍵
         n_spks: int,
         spk_emb_dim: int,
         n_feats: int,
-        encoder: Any,
-        decoder: Any,
-        cfm: Any,
-        data_statistics: Any,
+        encoder: SimpleNamespace,
+        decoder: SimpleNamespace,
+        cfm: SimpleNamespace,
+        data_statistics: dict[str, float],
         out_size: int,
         optimizer: Optional[Any] = None,
         scheduler: Optional[Any] = None,
